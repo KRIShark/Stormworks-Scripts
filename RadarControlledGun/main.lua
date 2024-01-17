@@ -1,9 +1,9 @@
+targets = {}
+
+
 -- Tick function that will be executed every logic tick
 function onTick()
     value = input.getNumber(1)			 -- Read the first number from the script's composite input
-
-    -- Create an array named "targets" of booleans
-    local targets = {}
 
     for i = 1, 8 do
         targets[i] = input.getBool(i)
@@ -17,14 +17,20 @@ function onTick()
 
     local closestTargetData = findClosestTarget(targets)
 
+    local lastClosestTargetData ={ } 
     -- Do something with the closest target data
     if closestTargetData then
         -- Now you can use closestTargetData for further processing
-        output.setNumber(1, closestTargetData["Distance"]) -- Example: Output the closest target's distance
-        output.setNumber(2, closestTargetData["Angle"]) -- Output the closest target's angle
-        output.setNumber(3, closestTargetData["ElevationAngle"]) -- Output the closest target's elevation angle
-        output.setNumber(4, closestTargetData["AzimuthAngle"]) -- Output the closest target's azimuth angle
-        output.setNumber(5, closestTargetData["TimeSinceDetected"]) -- Output the closest target's time since detected
+
+        lastClosestTargetData = closestTargetData
+    end
+
+    if lastClosestTargetData then
+        output.setNumber(1, lastClosestTargetData["Distance"]) -- Example: Output the closest target's distance
+        output.setNumber(2, lastClosestTargetData["Angle"]) -- Output the closest target's angle
+        output.setNumber(3, lastClosestTargetData["ElevationAngle"]) -- Output the closest target's elevation angle
+        output.setNumber(4, lastClosestTargetData["AzimuthAngle"]) -- Output the closest target's azimuth angle
+        output.setNumber(5, lastClosestTargetData["TimeSinceDetected"]) -- Output the closest target's time since detected
     end
 
 end
@@ -47,7 +53,7 @@ function findClosestTarget(targets)
     for i = 1, #targets do
         if targets[i] then
             local targetData = getTargetsData(3 + (i - 1) * 4) -- Assuming each target's data is stored in blocks of 4 starting from index 4
-            if targetData["Distance"] < closestDistance then
+            if targetData["Distance"] < closestDistance and targetData["Distance"] > property.getNumber("minDistance") then
                 closestDistance = targetData["Distance"]
                 closestTargetData = targetData
             end
@@ -55,4 +61,22 @@ function findClosestTarget(targets)
     end
 
     return closestTargetData
+end
+
+function onDraw()
+	-- Example that draws a red circle in the center of the screen with a radius of 20 pixels
+	width = screen.getWidth()
+	height = screen.getHeight()
+    
+    if targets then
+        -- Loop through the targets and print the index and target data
+        for i, target in ipairs(targets) do
+            if target then
+                screen.setText(1, 3 * i, "Distance")
+                screen.setText(10, 3 * i, target[i]["Distance"])
+            end
+        end
+    end
+    
+    
 end
