@@ -23,12 +23,9 @@ def array_to_lua(arr, filename):
     print(f"Lua array saved to {filename}")
 
 def main():
-    print("Hello World!")
     frame = np.random.choice([True, False], size=(height, width))
-    array_to_lua(frame, "frame.lua")
+    array_to_lua(frame, "display8x4/frame.lua")
     
-
-
 
 if __name__ == "__main__":
     main()
