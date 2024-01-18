@@ -77,6 +77,4 @@ function onDraw()
             end
         end
     end
-    
-    
 end
