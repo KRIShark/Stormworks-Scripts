@@ -1,0 +1,110 @@
+-- targeting.lua
+-- =====================================================================
+-- Reads intercept points (x,y,z) for up to 8 targets from channels 124,
+-- reads current yaw/pitch pivot angles (in turns) from channels 25/26,
+-- converts them to degrees, selects the closest valid target (or idles),
+-- computes yaw & pitch deltas in degrees, scales them into pivot speeds,
+-- and writes pivot-speed inputs to outputs 1 & 2.
+-- =====================================================================
+
+-- === CONFIGURATION ===
+local num_targets           = 8     -- must match radar.lua
+local outputs_per_target    = 3     -- x, y, z per target
+local yaw_turns_channel     = 25    -- pivot angle output, in turns
+local pitch_turns_channel   = 26    -- pivot angle output, in turns
+
+-- pivot speed limits
+local max_pivot_speed       = 1.0    -- max speed input
+local min_pivot_speed       = 0.05    -- minimum speed for fine adjustments
+local angle_deadband        = 0.5    -- degrees within which we hold position
+local idle_pitch_target_deg = 5.0   -- degrees to hold when idle
+
+-- smoothing factor for desired angles (0 = no smoothing, 1 = infinite)
+local SMOOTHING_ALPHA       = 0.15  
+
+-- === MATH HELPERS ===
+local function to_degrees(rad)
+  return rad * 180 / math.pi
+end
+
+-- Replacement for math.atan2
+local function atan2(y, x)
+  if x >  0 then return math.atan(y/x) end
+  if x <  0 and y >= 0 then return math.atan(y/x) + math.pi end
+  if x <  0 and y <  0 then return math.atan(y/x) - math.pi end
+  if x == 0 and y >  0 then return  math.pi/2 end
+  if x == 0 and y <  0 then return -math.pi/2 end
+  return 0
+end
+
+-- Normalize angle into [-180, 180]
+local function normalize_angle(deg)
+  while deg >  180 do deg = deg - 360 end
+  while deg < -180 do deg = deg + 360 end
+  return deg
+end
+
+-- Turn a degree-difference into a pivot speed
+local function proportional_speed(delta_deg)
+  local abs_delta = math.abs(delta_deg)
+  if abs_delta < angle_deadband then
+    return 0
+  end
+  -- linear ramp: [deadband..180]  [min_pivot_speed..max_pivot_speed]
+  local t = (abs_delta - angle_deadband) / (180 - angle_deadband)
+  local speed = min_pivot_speed + t * (max_pivot_speed - min_pivot_speed)
+  return speed * (delta_deg < 0 and -1 or 1)
+end
+
+-- === MAIN LOOP ===
+function onTick()
+  -- 1) Read current turret angles (in turns), convert to degrees
+  local current_yaw_turns   = input.getNumber(yaw_turns_channel)
+  local current_pitch_turns = input.getNumber(pitch_turns_channel)
+  local current_yaw_deg     = current_yaw_turns   * 360
+  local current_pitch_deg   = current_pitch_turns * 360
+
+  -- 2) Find closest valid intercept among targets
+  local best_dist2 = math.huge
+  local best_x, best_y, best_z
+
+  for id = 0, num_targets - 1 do
+    local base = id * outputs_per_target
+    local x = input.getNumber(base + 1)
+    local y = input.getNumber(base + 2)
+    local z = input.getNumber(base + 3)
+    if x~=0 or y~=0 or z~=0 then
+      local d2 = x*x + y*y + z*z
+      if d2 < best_dist2 then
+        best_dist2, best_x, best_y, best_z = d2, x, y, z
+      end
+    end
+  end
+
+  local yaw_speed, pitch_speed
+
+  if best_dist2 < math.huge then
+    -- 3) Compute desired yaw & pitch (deg)
+    local desired_yaw_deg   = to_degrees(atan2(best_y, best_x))
+    local flat_dist         = math.sqrt(best_x*best_x + best_y*best_y)
+    local desired_pitch_deg = to_degrees(atan2(best_z, flat_dist))
+
+    -- 4) Compute deltas
+    local delta_yaw   = normalize_angle(desired_yaw_deg   - current_yaw_deg)
+    local delta_pitch = normalize_angle(desired_pitch_deg - current_pitch_deg)
+
+    -- 5) Convert to pivot speeds
+    yaw_speed   = proportional_speed(delta_yaw)
+    pitch_speed = proportional_speed(delta_pitch)
+  else
+    -- 6) Idle: yaw slowly at min speed; pitch toward +15
+    yaw_speed = min_pivot_speed  -- constant slow yaw
+
+    local delta_pitch = normalize_angle(idle_pitch_target_deg - current_pitch_deg)
+    pitch_speed = proportional_speed(delta_pitch)
+  end
+
+  -- 7) Output to velocity pivots
+  output.setNumber(1, yaw_speed)
+  output.setNumber(2, pitch_speed)
+end
