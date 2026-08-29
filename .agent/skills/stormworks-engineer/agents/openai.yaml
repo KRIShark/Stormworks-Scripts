@@ -1,0 +1,4 @@
+interface:
+  display_name: "Stormworks Engineer"
+  short_description: "Build vehicles, logic, and Lua systems"
+  default_prompt: "Use $stormworks-engineer to design and debug this Stormworks system."
